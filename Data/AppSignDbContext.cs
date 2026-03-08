@@ -14,6 +14,7 @@ namespace SmartVideoCallApp.Data
         public DbSet<MeetingRoom> MeetingRooms => Set<MeetingRoom>();
         public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
         public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
+        public DbSet<SignCoordinate> SignCoordinates => Set<SignCoordinate>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -53,6 +54,17 @@ namespace SmartVideoCallApp.Data
             {
                 entity.HasKey(x => x.Id);
                 entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+                entity.HasIndex(x => x.CreatedAtUtc);
+            });
+
+            modelBuilder.Entity<SignCoordinate>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.Label).HasMaxLength(120).IsRequired();
+                entity.Property(x => x.Description).HasMaxLength(300);
+                entity.Property(x => x.CoordinatesJson).HasColumnType("longtext").IsRequired();
+                entity.HasIndex(x => x.Label);
+                entity.HasIndex(x => x.TimeId);
                 entity.HasIndex(x => x.CreatedAtUtc);
             });
         }

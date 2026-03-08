@@ -5,18 +5,28 @@
 <div class="train-wrap">
     <div class="train-card">
         <h2>Hand Coordinate Trainer</h2>
-        <p>Start camera, then click detect. Coordinates are logged to browser console only while detect is active.</p>
+        <p>Start camera, click Detect Once, then save coordinates with label and description.</p>
 
         <div class="video-box">
             <video id="trainVideo" autoplay playsinline muted></video>
             <canvas id="trainCanvas"></canvas>
         </div>
 
+        <div class="meta-form">
+            <textarea id="coordsPreview" readonly placeholder="Detected coordinates will appear here..."></textarea>
+            <input id="signLabel" type="text" placeholder="Label (example: hello)" disabled />
+            <input id="signDescription" type="text" placeholder="Description (example: hi)" disabled />
+            <span id="saveStatus" class="save-status"></span>
+        </div>
+
         <div class="actions">
             <button id="startCameraBtn" class="btn" onclick="startCamera()">Start Camera</button>
             <button id="detectOnceBtn" class="btn once" onclick="detectOnce()" disabled>Detect Once</button>
-            <button id="detectBtn" class="btn detect" onclick="toggleDetection()" disabled>Start Detect</button>
+            <button id="saveBtn" class="btn save" onclick="saveCoordinates()" disabled>Save Coordinates</button>
+            <button id="chatBtn" class="btn chat" onclick="toggleChat()" disabled>Start Chat</button>
         </div>
+
+        <div id="chatResult" class="chat-result">Detection result: -</div>
     </div>
 </div>
 
@@ -26,13 +36,23 @@
 <script>
     let model = null;
     let localStream = null;
-    let detectTimer = null;
-    let detecting = false;
+    let lastDetectedCoords = null;
+    let isChatRunning = false;
+    let chatTimer = null;
+    let savedSamples = [];
 
     const videoEl = document.getElementById("trainVideo");
     const canvasEl = document.getElementById("trainCanvas");
-    const detectBtn = document.getElementById("detectBtn");
     const detectOnceBtn = document.getElementById("detectOnceBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const chatBtn = document.getElementById("chatBtn");
+    const saveStatusEl = document.getElementById("saveStatus");
+    const signLabelEl = document.getElementById("signLabel");
+    const signDescriptionEl = document.getElementById("signDescription");
+    const coordsPreviewEl = document.getElementById("coordsPreview");
+    const chatResultEl = document.getElementById("chatResult");
+
+    signLabelEl.addEventListener("input", refreshSaveState);
 
     async function startCamera() {
         try {
@@ -40,8 +60,8 @@
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 videoEl.srcObject = localStream;
             }
-            detectBtn.disabled = false;
             detectOnceBtn.disabled = false;
+            chatBtn.disabled = false;
             console.log("[TRAIN] Camera started");
         } catch (err) {
             console.error("[TRAIN] Camera start failed:", err);
@@ -104,34 +124,6 @@
         }
     }
 
-    async function toggleDetection() {
-        if (detecting) {
-            stopDetection();
-            return;
-        }
-
-        if (!videoEl.srcObject || videoEl.readyState < 2) {
-            alert("Start camera first.");
-            return;
-        }
-
-        try {
-            const handModel = await ensureModel();
-            detecting = true;
-            detectBtn.textContent = "Stop Detect";
-            detectBtn.classList.add("active");
-            console.log("[TRAIN] Detection started");
-
-            detectTimer = setInterval(async () => {
-                if (!detecting || videoEl.readyState < 2) return;
-                await runDetectionCycle(handModel);
-            }, 700);
-        } catch (err) {
-            console.error("[TRAIN] Detection start failed:", err);
-            stopDetection();
-        }
-    }
-
     async function detectOnce() {
         if (!videoEl.srcObject || videoEl.readyState < 2) {
             alert("Start camera first.");
@@ -150,13 +142,30 @@
         const predictions = await handModel.estimateHands(videoEl, false);
         drawLandmarks(predictions);
 
-        // Lighter behavior: only log when at least one hand is visible.
         if (!predictions || predictions.length === 0) {
+            coordsPreviewEl.value = "";
+            saveStatusEl.textContent = "No hand detected";
+            lastDetectedCoords = null;
+            signLabelEl.disabled = true;
+            signDescriptionEl.disabled = true;
+            refreshSaveState();
             if (isSingle) console.log("[TRAIN] No hand detected in this frame.");
             return;
         }
 
-        const coords = predictions.map((h, idx) => ({
+        const coords = mapPredictionsToCoords(predictions);
+
+        lastDetectedCoords = coords;
+        coordsPreviewEl.value = JSON.stringify(coords, null, 2);
+        signLabelEl.disabled = false;
+        signDescriptionEl.disabled = false;
+        saveStatusEl.textContent = "Coordinates detected";
+        refreshSaveState();
+        console.log(isSingle ? "[TRAIN] Hand coordinates (single):" : "[TRAIN] Hand coordinates:", coords);
+    }
+
+    function mapPredictionsToCoords(predictions) {
+        return predictions.map((h, idx) => ({
             hand: idx,
             points: (h.landmarks || []).map(p => ({
                 x: Math.round(p[0]),
@@ -164,21 +173,192 @@
                 z: Math.round(p[2] || 0)
             }))
         }));
-
-        console.log(isSingle ? "[TRAIN] Hand coordinates (single):" : "[TRAIN] Hand coordinates:", coords);
     }
 
-    function stopDetection() {
-        detecting = false;
-        if (detectTimer) {
-            clearInterval(detectTimer);
-            detectTimer = null;
+    async function saveCoordinates() {
+        if (!lastDetectedCoords || lastDetectedCoords.length === 0) {
+            alert("Detect coordinates first.");
+            return;
         }
-        const ctx = canvasEl.getContext("2d");
-        if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-        detectBtn.textContent = "Start Detect";
-        detectBtn.classList.remove("active");
-        console.log("[TRAIN] Detection stopped");
+
+        const label = (signLabelEl.value || "").trim();
+        const description = (signDescriptionEl.value || "").trim();
+
+        if (!label) {
+            alert("Please enter a label.");
+            return;
+        }
+
+        const payload = {
+            label: label,
+            description: description || null,
+            timeId: Date.now(),
+            coordinates: lastDetectedCoords
+        };
+
+        try {
+            const resp = await fetch("/Call/SaveSignCoordinate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data?.message || "Failed to save coordinates.");
+
+            saveStatusEl.textContent = `Saved: ${label}`;
+            await loadSavedSamples();
+            console.log("[TRAIN] Coordinate saved:", data);
+        } catch (err) {
+            console.error("[TRAIN] Save failed:", err);
+            saveStatusEl.textContent = "Save failed";
+        }
+    }
+
+    async function loadSavedSamples() {
+        const resp = await fetch("/Call/GetSignCoordinates");
+        const data = await resp.json();
+        if (!resp.ok) throw new Error("Failed to load saved coordinates.");
+
+        savedSamples = (data || []).map(item => {
+            let parsed = [];
+            try {
+                parsed = JSON.parse(item.coordinatesJson || "[]");
+            } catch {
+                parsed = [];
+            }
+            return {
+                label: item.label || "",
+                description: item.description || "",
+                normalized: normalizeCoordinates(parsed)
+            };
+        }).filter(x => x.normalized.length > 0);
+    }
+
+    function normalizeCoordinates(coords) {
+        if (!Array.isArray(coords) || coords.length === 0) return [];
+        const firstHand = coords[0];
+        if (!firstHand || !Array.isArray(firstHand.points) || firstHand.points.length === 0) return [];
+
+        const points = firstHand.points;
+        const origin = points[0];
+        if (!origin) return [];
+
+        let maxDistance = 0;
+        const shifted = points.map(p => {
+            const dx = p.x - origin.x;
+            const dy = p.y - origin.y;
+            const dz = (p.z || 0) - (origin.z || 0);
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist > maxDistance) maxDistance = dist;
+            return { dx, dy, dz };
+        });
+
+        const scale = maxDistance > 0 ? maxDistance : 1;
+        return shifted.map(p => ({
+            x: p.dx / scale,
+            y: p.dy / scale,
+            z: p.dz / scale
+        }));
+    }
+
+    function calculateDistance(pointsA, pointsB) {
+        if (!Array.isArray(pointsA) || !Array.isArray(pointsB) || pointsA.length !== pointsB.length) {
+            return Number.POSITIVE_INFINITY;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < pointsA.length; i++) {
+            const dx = pointsA[i].x - pointsB[i].x;
+            const dy = pointsA[i].y - pointsB[i].y;
+            const dz = pointsA[i].z - pointsB[i].z;
+            sum += Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        return sum / pointsA.length;
+    }
+
+    function findBestMatch(currentCoords) {
+        const currentNormalized = normalizeCoordinates(currentCoords);
+        if (currentNormalized.length === 0 || savedSamples.length === 0) return null;
+
+        let best = null;
+        for (const sample of savedSamples) {
+            const distance = calculateDistance(currentNormalized, sample.normalized);
+            if (!best || distance < best.distance) {
+                best = { sample, distance };
+            }
+        }
+
+        const maxDistanceThreshold = 0.33;
+        if (!best || best.distance > maxDistanceThreshold) return null;
+        return best;
+    }
+
+    async function toggleChat() {
+        if (isChatRunning) {
+            stopChat();
+            return;
+        }
+
+        if (!videoEl.srcObject || videoEl.readyState < 2) {
+            alert("Start camera first.");
+            return;
+        }
+
+        try {
+            chatResultEl.textContent = "Detection result: loading samples...";
+            await loadSavedSamples();
+            if (savedSamples.length === 0) {
+                chatResultEl.textContent = "Detection result: no saved signs.";
+                return;
+            }
+
+            const handModel = await ensureModel();
+            isChatRunning = true;
+            chatBtn.textContent = "Stop Chat";
+
+            chatTimer = setInterval(async () => {
+                if (!isChatRunning || videoEl.readyState < 2) return;
+                const predictions = await handModel.estimateHands(videoEl, false);
+                drawLandmarks(predictions);
+
+                if (!predictions || predictions.length === 0) {
+                    chatResultEl.textContent = "Detection result: no hand";
+                    return;
+                }
+
+                const currentCoords = mapPredictionsToCoords(predictions);
+                const match = findBestMatch(currentCoords);
+                if (!match) {
+                    chatResultEl.textContent = "Detection result: no matching sign";
+                    return;
+                }
+
+                const score = Math.max(0, 1 - (match.distance / 0.33));
+                const confidence = Math.round(score * 100);
+                chatResultEl.textContent = `Detection result: ${match.sample.label} (${confidence}%)`;
+            }, 700);
+        } catch (err) {
+            console.error("[TRAIN] Chat detection failed:", err);
+            chatResultEl.textContent = "Detection result: error";
+            stopChat();
+        }
+    }
+
+    function stopChat() {
+        isChatRunning = false;
+        if (chatTimer) {
+            clearInterval(chatTimer);
+            chatTimer = null;
+        }
+        chatBtn.textContent = "Start Chat";
+    }
+
+    function refreshSaveState() {
+        const hasCoords = !!lastDetectedCoords && lastDetectedCoords.length > 0;
+        const hasLabel = (signLabelEl.value || "").trim().length > 0;
+        saveBtn.disabled = !(hasCoords && hasLabel);
     }
 </script>
 
@@ -238,6 +418,37 @@
         flex-wrap: wrap;
     }
 
+    .meta-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .meta-form input,
+    .meta-form textarea {
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 10px 12px;
+        outline: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    #coordsPreview {
+        grid-column: 1 / -1;
+        min-height: 150px;
+        resize: vertical;
+        background: #f8fafc;
+    }
+
+    .save-status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        color: #166534;
+        font-weight: 600;
+    }
+
     .btn {
         border: none;
         border-radius: 10px;
@@ -247,15 +458,31 @@
         background: #0f766e;
     }
 
-    .btn.detect {
-        background: #ef4444;
-    }
-
-    .btn.detect.active {
-        background: #22c55e;
-    }
-
     .btn.once {
         background: #2563eb;
+    }
+
+    .btn.save {
+        background: #15803d;
+    }
+
+    .btn.chat {
+        background: #ea580c;
+    }
+
+    .chat-result {
+        margin-top: 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #f8fafc;
+        color: #0f172a;
+        font-weight: 600;
+    }
+
+    @@media (max-width: 760px) {
+        .meta-form {
+            grid-template-columns: 1fr;
+        }
     }
 </style>

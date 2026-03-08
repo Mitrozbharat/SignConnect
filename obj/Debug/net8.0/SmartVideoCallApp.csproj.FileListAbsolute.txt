@@ -113,3 +113,4 @@ C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\bin\Debug\net8.0\SmartVideoCa
 C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\bin\Debug\net8.0\artifacts\obj\Debug\net8.0\rpswa.dswa.cache.json
 C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\bin\Debug\net8.0\artifacts\obj\project.assets.json
 C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\bin\Debug\net8.0\artifacts\obj\SmartVideoCallApp.csproj.nuget.dgspec.json
+C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\obj\Debug\net8.0\SmartVideoCallApp.sourcelink.json
