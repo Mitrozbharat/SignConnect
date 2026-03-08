@@ -1,0 +1,261 @@
+@{
+    ViewData["Title"] = "Train Model";
+}
+
+<div class="train-wrap">
+    <div class="train-card">
+        <h2>Hand Coordinate Trainer</h2>
+        <p>Start camera, then click detect. Coordinates are logged to browser console only while detect is active.</p>
+
+        <div class="video-box">
+            <video id="trainVideo" autoplay playsinline muted></video>
+            <canvas id="trainCanvas"></canvas>
+        </div>
+
+        <div class="actions">
+            <button id="startCameraBtn" class="btn" onclick="startCamera()">Start Camera</button>
+            <button id="detectOnceBtn" class="btn once" onclick="detectOnce()" disabled>Detect Once</button>
+            <button id="detectBtn" class="btn detect" onclick="toggleDetection()" disabled>Start Detect</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+
+<script>
+    let model = null;
+    let localStream = null;
+    let detectTimer = null;
+    let detecting = false;
+
+    const videoEl = document.getElementById("trainVideo");
+    const canvasEl = document.getElementById("trainCanvas");
+    const detectBtn = document.getElementById("detectBtn");
+    const detectOnceBtn = document.getElementById("detectOnceBtn");
+
+    async function startCamera() {
+        try {
+            if (!localStream) {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                videoEl.srcObject = localStream;
+            }
+            detectBtn.disabled = false;
+            detectOnceBtn.disabled = false;
+            console.log("[TRAIN] Camera started");
+        } catch (err) {
+            console.error("[TRAIN] Camera start failed:", err);
+            alert("Camera access failed.");
+        }
+    }
+
+    async function ensureModel() {
+        if (model) return model;
+        await tf.setBackend("webgl");
+        await tf.ready();
+        model = await handpose.load();
+        console.log("[TRAIN] Handpose model loaded");
+        return model;
+    }
+
+    function drawLandmarks(predictions) {
+        const w = Math.max(1, Math.floor(videoEl.clientWidth));
+        const h = Math.max(1, Math.floor(videoEl.clientHeight));
+        if (canvasEl.width !== w) canvasEl.width = w;
+        if (canvasEl.height !== h) canvasEl.height = h;
+
+        const ctx = canvasEl.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+        const chains = [
+            [0, 1, 2, 3, 4],
+            [0, 5, 6, 7, 8],
+            [0, 9, 10, 11, 12],
+            [0, 13, 14, 15, 16],
+            [0, 17, 18, 19, 20]
+        ];
+
+        for (const hand of predictions) {
+            const points = hand.landmarks || [];
+            ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";
+            ctx.lineWidth = 2;
+
+            for (const chain of chains) {
+                ctx.beginPath();
+                chain.forEach((idx, i) => {
+                    const p = points[idx];
+                    if (!p) return;
+                    const x = (p[0] / (videoEl.videoWidth || 1)) * canvasEl.width;
+                    const y = (p[1] / (videoEl.videoHeight || 1)) * canvasEl.height;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
+            for (const p of points) {
+                const x = (p[0] / (videoEl.videoWidth || 1)) * canvasEl.width;
+                const y = (p[1] / (videoEl.videoHeight || 1)) * canvasEl.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    async function toggleDetection() {
+        if (detecting) {
+            stopDetection();
+            return;
+        }
+
+        if (!videoEl.srcObject || videoEl.readyState < 2) {
+            alert("Start camera first.");
+            return;
+        }
+
+        try {
+            const handModel = await ensureModel();
+            detecting = true;
+            detectBtn.textContent = "Stop Detect";
+            detectBtn.classList.add("active");
+            console.log("[TRAIN] Detection started");
+
+            detectTimer = setInterval(async () => {
+                if (!detecting || videoEl.readyState < 2) return;
+                await runDetectionCycle(handModel);
+            }, 700);
+        } catch (err) {
+            console.error("[TRAIN] Detection start failed:", err);
+            stopDetection();
+        }
+    }
+
+    async function detectOnce() {
+        if (!videoEl.srcObject || videoEl.readyState < 2) {
+            alert("Start camera first.");
+            return;
+        }
+
+        try {
+            const handModel = await ensureModel();
+            await runDetectionCycle(handModel, true);
+        } catch (err) {
+            console.error("[TRAIN] Detect once failed:", err);
+        }
+    }
+
+    async function runDetectionCycle(handModel, isSingle = false) {
+        const predictions = await handModel.estimateHands(videoEl, false);
+        drawLandmarks(predictions);
+
+        // Lighter behavior: only log when at least one hand is visible.
+        if (!predictions || predictions.length === 0) {
+            if (isSingle) console.log("[TRAIN] No hand detected in this frame.");
+            return;
+        }
+
+        const coords = predictions.map((h, idx) => ({
+            hand: idx,
+            points: (h.landmarks || []).map(p => ({
+                x: Math.round(p[0]),
+                y: Math.round(p[1]),
+                z: Math.round(p[2] || 0)
+            }))
+        }));
+
+        console.log(isSingle ? "[TRAIN] Hand coordinates (single):" : "[TRAIN] Hand coordinates:", coords);
+    }
+
+    function stopDetection() {
+        detecting = false;
+        if (detectTimer) {
+            clearInterval(detectTimer);
+            detectTimer = null;
+        }
+        const ctx = canvasEl.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        detectBtn.textContent = "Start Detect";
+        detectBtn.classList.remove("active");
+        console.log("[TRAIN] Detection stopped");
+    }
+</script>
+
+<style>
+    .train-wrap {
+        padding: 20px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .train-card {
+        width: min(100%, 920px);
+        background: #fff;
+        border: 1px solid #dbe4ee;
+        border-radius: 18px;
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+        padding: 20px;
+    }
+
+    .train-card h2 {
+        margin: 0 0 6px;
+    }
+
+    .train-card p {
+        margin: 0 0 14px;
+        color: #475569;
+    }
+
+    .video-box {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #000;
+        margin-bottom: 12px;
+    }
+
+    #trainVideo, #trainCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    #trainVideo {
+        object-fit: cover;
+    }
+
+    #trainCanvas {
+        pointer-events: none;
+    }
+
+    .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        color: #fff;
+        cursor: pointer;
+        background: #0f766e;
+    }
+
+    .btn.detect {
+        background: #ef4444;
+    }
+
+    .btn.detect.active {
+        background: #22c55e;
+    }
+
+    .btn.once {
+        background: #2563eb;
+    }
+</style>

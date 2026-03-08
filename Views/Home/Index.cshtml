@@ -1,0 +1,149 @@
+﻿@{
+    ViewData["Title"] = "Sign Connect - Connecting People";
+}
+
+<div class="hero-section">
+    <div class="glass-card text-center">
+        <div class="logo-badge">🚀 SmartVideo</div>
+        <h1 class="display-3 fw-bold">Connecting People, <span class="text-gradient">Simply.</span></h1>
+        <p class="lead mb-5 text-secondary">High-end video conferences with advanced security, organization-based access, and modern chat. No downloads required.</p>
+        
+        <div class="action-buttons">
+            <a href="@Url.Action("Index", "Call")" class="btn-start">
+                <span class="icon">✨</span> Start Sign Connect  Meeting
+            </a>
+        </div>
+        
+        <div class="features-row mt-5">
+            <div class="feature-item">
+                <span class="feature-icon">🔒</span>
+                <span>Secure Approval</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">🏢</span>
+                <span>Org-Based Auto-Join</span>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">💬</span>
+                <span>Classic Chat UI</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #128c7e 0%, #25d366 100%);
+        --dark-bg: #0f172a;
+    }
+
+    body {
+        background-color: var(--dark-bg);
+        margin: 0;
+        overflow-x: hidden;
+    }
+
+    .hero-section {
+        min-height: 90vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: radial-gradient(circle at top right, rgba(18, 140, 126, 0.1), transparent),
+                    radial-gradient(circle at bottom left, rgba(37, 211, 102, 0.1), transparent);
+    }
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 40px;
+        padding: 80px 40px;
+        max-width: 900px;
+        width: 100%;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .logo-badge {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 8px 20px;
+        border-radius: 100px;
+        font-size: 14px;
+        color: #fff;
+        display: inline-block;
+        margin-bottom: 24px;
+        font-weight: 500;
+        letter-spacing: 1px;
+    }
+
+    h1 {
+        color: #fff;
+        letter-spacing: -2px;
+        margin-bottom: 24px;
+    }
+
+    .text-gradient {
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .lead {
+        font-size: 20px;
+        max-width: 600px;
+        margin: 0 auto;
+        color: #94a3b8 !important;
+    }
+
+    .btn-start {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--primary-gradient);
+        color: white;
+        padding: 18px 40px;
+        border-radius: 20px;
+        font-size: 20px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
+    }
+
+    .btn-start:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 20px 40px rgba(37, 211, 102, 0.4);
+        color: white;
+    }
+
+    .features-row {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        flex-wrap: wrap;
+    }
+
+    .feature-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .feature-icon {
+        font-size: 18px;
+    }
+
+    @@media (max-width: 768px) {
+        .glass-card {
+            padding: 40px 20px;
+            border-radius: 30px;
+        }
+        h1 { font-size: 40px; letter-spacing: -1px; }
+        .btn-start { width: 100%; justify-content: center; }
+        .features-row { gap: 20px; }
+    }
+</style>
