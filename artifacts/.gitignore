@@ -1,0 +1,18 @@
+# Visual Studio
+.vs/
+
+# Build folders
+bin/
+obj/
+artifacts/
+
+# User files
+*.user
+*.user
+*.suo
+
+# Logs
+*.log
+
+# Node modules (agar frontend use ho)
+node_modules/
