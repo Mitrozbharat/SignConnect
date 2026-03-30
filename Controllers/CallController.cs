@@ -25,6 +25,11 @@ namespace SmartVideoCallApp.Controllers
             return View();
         }
 
+        public IActionResult SignCoordinates()
+        {
+            return View();
+        }
+
         [HttpPost]
         public async Task<IActionResult> SaveSignCoordinate([FromBody] SaveSignCoordinateRequest request)
         {
@@ -65,7 +70,8 @@ namespace SmartVideoCallApp.Controllers
                     x.Label,
                     x.Description,
                     x.TimeId,
-                    x.CoordinatesJson
+                    x.CoordinatesJson,
+                    x.CreatedAtUtc
                 })
                 .ToListAsync();
 

@@ -1,0 +1,291 @@
+@{
+    ViewData["Title"] = "Sign Coordinates";
+}
+
+<div class="sign-page">
+    <div class="sign-card">
+        <div class="sign-head">
+            <div>
+                <h2>Sign Coordinate Management</h2>
+                <p>View all saved labels and coordinate samples in one table.</p>
+            </div>
+            <a class="btn-back" asp-controller="Call" asp-action="TrainModel">Back To Train Model</a>
+        </div>
+
+        <div class="sign-tools">
+            <input id="searchInput" type="text" placeholder="Search by label or description" />
+            <select id="pageSizeSelect">
+                <option value="5">5 rows</option>
+                <option value="10" selected>10 rows</option>
+                <option value="20">20 rows</option>
+                <option value="50">50 rows</option>
+            </select>
+        </div>
+
+        <div class="table-wrap">
+            <table class="sign-table">
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Description</th>
+                        <th>Hands</th>
+                        <th>Points</th>
+                        <th>Time Id</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody id="signTableBody">
+                    <tr>
+                        <td colspan="6" class="loading-cell">Loading data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pager">
+            <button id="prevBtn" type="button">Previous</button>
+            <span id="pageInfo">Page 1</span>
+            <button id="nextBtn" type="button">Next</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allRows = [];
+    let filteredRows = [];
+    let currentPage = 1;
+
+    const searchInputEl = document.getElementById("searchInput");
+    const pageSizeSelectEl = document.getElementById("pageSizeSelect");
+    const signTableBodyEl = document.getElementById("signTableBody");
+    const pageInfoEl = document.getElementById("pageInfo");
+    const prevBtnEl = document.getElementById("prevBtn");
+    const nextBtnEl = document.getElementById("nextBtn");
+
+    searchInputEl.addEventListener("input", applyFilters);
+    pageSizeSelectEl.addEventListener("change", applyFilters);
+    prevBtnEl.addEventListener("click", () => changePage(-1));
+    nextBtnEl.addEventListener("click", () => changePage(1));
+
+    async function loadCoordinateRows() {
+        try {
+            const resp = await fetch("/Call/GetSignCoordinates");
+            const data = await resp.json();
+            if (!resp.ok) throw new Error("Failed to load sign coordinates.");
+
+            allRows = Array.isArray(data) ? data : [];
+            applyFilters();
+        } catch (err) {
+            console.error("[SIGN TABLE] Load failed:", err);
+            signTableBodyEl.innerHTML = `
+                <tr>
+                    <td colspan="6" class="loading-cell">Failed to load coordinate data.</td>
+                </tr>
+            `;
+        }
+    }
+
+    function applyFilters() {
+        const query = (searchInputEl.value || "").trim().toLowerCase();
+        filteredRows = allRows.filter(row => {
+            const label = (row.label || "").toLowerCase();
+            const description = (row.description || "").toLowerCase();
+            return !query || label.includes(query) || description.includes(query);
+        });
+
+        currentPage = 1;
+        renderTable();
+    }
+
+    function changePage(step) {
+        const totalPages = getTotalPages();
+        currentPage = Math.min(Math.max(1, currentPage + step), totalPages);
+        renderTable();
+    }
+
+    function getTotalPages() {
+        const pageSize = Number(pageSizeSelectEl.value || 10);
+        return Math.max(1, Math.ceil(filteredRows.length / pageSize));
+    }
+
+    function renderTable() {
+        const pageSize = Number(pageSizeSelectEl.value || 10);
+        const totalPages = getTotalPages();
+        const start = (currentPage - 1) * pageSize;
+        const pageRows = filteredRows.slice(start, start + pageSize);
+
+        if (pageRows.length === 0) {
+            signTableBodyEl.innerHTML = `
+                <tr>
+                    <td colspan="6" class="loading-cell">No saved coordinate rows found.</td>
+                </tr>
+            `;
+        } else {
+            signTableBodyEl.innerHTML = pageRows.map(row => {
+                const parsed = parseCoordinates(row.coordinatesJson);
+                const handCount = parsed.length;
+                const pointCount = parsed.reduce((sum, hand) => sum + ((hand.points || []).length), 0);
+                const created = row.createdAtUtc ? new Date(row.createdAtUtc).toLocaleString() : "-";
+
+                return `
+                    <tr>
+                        <td>${escapeHtml(row.label || "-")}</td>
+                        <td>${escapeHtml(row.description || "-")}</td>
+                        <td>${handCount}</td>
+                        <td>${pointCount}</td>
+                        <td>${row.timeId || "-"}</td>
+                        <td>${escapeHtml(created)}</td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        pageInfoEl.textContent = `Page ${currentPage} of ${totalPages} (${filteredRows.length} rows)`;
+        prevBtnEl.disabled = currentPage <= 1;
+        nextBtnEl.disabled = currentPage >= totalPages;
+    }
+
+    function parseCoordinates(rawJson) {
+        try {
+            const parsed = JSON.parse(rawJson || "[]");
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll("\"", "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    loadCoordinateRows();
+</script>
+
+<style>
+    .sign-page {
+        padding: 20px 0;
+    }
+
+    .sign-card {
+        background: #fff;
+        border: 1px solid #dbe4ee;
+        border-radius: 18px;
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+        padding: 20px;
+    }
+
+    .sign-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+
+    .sign-head h2 {
+        margin: 0 0 6px;
+    }
+
+    .sign-head p {
+        margin: 0;
+        color: #475569;
+    }
+
+    .btn-back {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: #0f766e;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .sign-tools {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+
+    .sign-tools input,
+    .sign-tools select {
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 10px 12px;
+    }
+
+    .sign-tools input {
+        flex: 1;
+        min-width: 240px;
+    }
+
+    .table-wrap {
+        overflow-x: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+    }
+
+    .sign-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+    }
+
+    .sign-table th,
+    .sign-table td {
+        padding: 12px 14px;
+        border-bottom: 1px solid #e2e8f0;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .sign-table th {
+        background: #f8fafc;
+        color: #0f172a;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .loading-cell {
+        text-align: center !important;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .pager {
+        margin-top: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .pager button {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        background: #0f172a;
+        color: #fff;
+    }
+
+    .pager button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    #pageInfo {
+        color: #475569;
+        font-weight: 600;
+    }
+</style>

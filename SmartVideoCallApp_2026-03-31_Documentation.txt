@@ -1,0 +1,249 @@
+SmartVideoCallApp Documentation
+Date: 2026-03-31
+
+1. Project Goal
+This system is a browser-based sign-assisted video meeting and training platform built with ASP.NET Core MVC, SignalR, EF Core, MySQL, TensorFlow.js, and MediaPipe-style hand detection.
+
+The platform supports:
+- live video meetings
+- sign detection overlays in meetings
+- sign-sample training and storage
+- live prediction from trained samples
+- sentence-building from detected signs
+- optional voice output from detected text
+- management of saved sign-coordinate data
+
+2. Main Modules
+- Home
+  Landing page and entry navigation.
+- Meeting Page
+  Real-time meeting UI at /Call/Index or /Call?room=...
+- Train Model Page
+  Sample capture, prediction testing, and label management.
+- Sign Coordinates Page
+  Table view for saved sign data.
+- SignalR Hub
+  Real-time room communication, chat, media state, joining, signaling.
+- Database Layer
+  Users, rooms, messages, activities, sign coordinates.
+
+3. Technology Stack
+- Backend: ASP.NET Core MVC (.NET 8)
+- Realtime: SignalR
+- Database: EF Core + MySQL
+- Frontend: Razor + JavaScript
+- Hand Detection: TensorFlow.js + MediaPipe hand-pose detection
+- Voice Output: Browser speechSynthesis
+
+4. Current Working Features
+- create and join meeting rooms
+- video/audio calls using WebRTC signaling
+- room approval / join flow
+- text chat
+- hand overlay drawing in meeting
+- both-hand detection in training page
+- both-hand overlay in meeting for active sign-detect user
+- train sign samples with label + description
+- save sign coordinates in database
+- view saved sign data in table
+- predict saved signs from live camera
+- sentence building in meeting sign mode
+- optional speak mode for detected sentence
+
+5. Data Flow
+5.1 Training Flow
+1. User opens TrainModel
+2. User starts camera
+3. System detects one or two hands
+4. Landmarks are converted into coordinate arrays
+5. User enters label and description
+6. System saves data into SignCoordinates table
+7. Saved samples become available for prediction
+
+5.2 Prediction Flow
+1. User opens TrainModel
+2. User switches to Predict
+3. System loads saved sign samples
+4. Live hand landmarks are normalized
+5. Current landmarks are compared with saved samples
+6. Stable match becomes predicted label
+7. Predicted text can be spoken
+
+5.3 Meeting Sign Flow
+1. User joins a live room
+2. User clicks the sign detection button on the local tile
+3. System activates sign detection only for that active tile
+4. Local browser detects hand landmarks
+5. Local browser compares against saved samples
+6. Stable sign changes are added to a sentence buffer
+7. After a short no-change gap, sentence is sent to chat
+8. If Speak Mode is on, sentence is spoken locally
+
+6. High-Level Architecture
+Browser Camera
+  ->
+Hand Detector (TFJS + MediaPipe)
+  ->
+Landmark Coordinates
+  ->
+Normalization
+  ->
+Sample Matching / Prediction
+  ->
+Label or Sentence
+  ->
+Chat / Voice / UI
+
+7. Backend Flow
+User Action
+  ->
+Controller / SignalR Hub
+  ->
+EF Core DbContext
+  ->
+MySQL Database
+  ->
+Response to Browser
+
+8. Meeting Flow
+User A Camera
+  ->
+Local Sign Detection
+  ->
+Stable Sign Match
+  ->
+Sentence Buffer
+  ->
+SignalR Chat Message
+  ->
+All Room Members See Text
+
+9. Database Entities
+- UserAccount
+  Stores participant identity
+- Organization
+  Optional org-based room usage
+- MeetingRoom
+  Stores room metadata
+- ChatMessage
+  Stores room chat history
+- ActivityLog
+  Stores join/leave/action events
+- SignCoordinate
+  Stores training samples for signs
+
+10. SignCoordinate Data Meaning
+Each saved row contains:
+- Id
+- Label
+- Description
+- TimeId
+- CoordinatesJson
+- CreatedAtUtc
+
+CoordinatesJson contains:
+- one or two hands
+- per-hand point list
+- x, y, z values
+- hand ordering / labels depending on page logic
+
+11. Current Matching Logic
+The current system uses:
+- saved hand landmark samples
+- normalization relative to the wrist/origin
+- distance comparison against stored samples
+- stable timing checks before accepting prediction
+
+This is sample matching, not a trained deep-learning sign-language model.
+
+12. Current Strengths
+- works directly in browser
+- no external ML server required
+- fast iteration for custom sign data
+- supports both-hand capture
+- already integrated with meeting/chat flow
+- easy to expand with more labels
+
+13. Current Limitations
+- not a full sign-language understanding engine
+- sample matching is weaker than a trained model
+- complex motion-based signs are harder
+- sentence understanding is rule-based, not language-aware
+- face/body context is not yet used
+- meeting page currently relies on local prediction only
+
+14. Why Full Video-to-Sentence Is Hard
+Real sign language often depends on:
+- hand shape
+- hand movement over time
+- both-hand coordination
+- facial expression
+- head pose
+- body posture
+- signer variation
+
+So video to sentence needs sequence modeling, not just single-frame matching.
+
+15. Recommended Next-Stage System
+Phase 1
+- improve sample collection
+- add more labels
+- collect more two-hand examples
+- improve sentence buffering rules
+
+Phase 2
+- train a real classifier on saved samples/videos
+- move from sample matching to ML prediction
+- support temporal sign sequences
+
+Phase 3
+- add face + pose landmarks
+- support sentence-level sign recognition
+- improve child training workflows
+- support instructor video dataset ingestion
+
+16. Instructor-to-Child Training System Design
+Instructor Videos
+  ->
+Frame / Landmark Extraction
+  ->
+Labeling by Word or Sentence
+  ->
+Dataset Storage
+  ->
+Model Training
+  ->
+Live Child Camera Prediction
+  ->
+Text / Voice Feedback
+
+17. If Using Instructor Videos
+Needed steps:
+- split videos into sign clips
+- label each clip correctly
+- extract landmarks from frames
+- store sequence data, not only one frame
+- train classifier on many variations
+- validate with children’s samples
+
+18. Multi-User Meeting Handling
+Best practice:
+- each user detects signs locally
+- only final label/sentence is sent to room
+- raw coordinates should not be broadcast continuously
+- speech should stay local unless explicitly shared
+
+19. Security and Performance Notes
+- local inference reduces server load
+- SignalR should carry text events, not constant landmark streams
+- both-hand live inference is heavier than one-hand
+- long meetings need careful timer cleanup
+- database should store samples efficiently and with labels
+
+20. Final Conclusion
+This system already works as:
+- a custom sign training tool
+- a sign-assisted meeting tool
+- a live prediction prototype
+
+It does not yet behave like a full sign-language translation engine, but it is a strong foundation for building one.

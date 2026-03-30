@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+artifacts/build/
+artifacts/obj/
+
+# Visual Studio
+.vs/
+
+# NuGet / local packages
+.packages/
+*.nupkg
+
+# User-specific files
+*.user
+*.suo
+
+# Logs / temp
+*.log
+*.tmp
+*.cache
+
+# OS files
+.DS_Store
+Thumbs.db
