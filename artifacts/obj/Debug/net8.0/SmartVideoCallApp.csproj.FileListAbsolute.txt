@@ -1,9 +1,0 @@
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.csproj.AssemblyReference.cache
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\rpswa.dswa.cache.json
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.AssemblyInfoInputs.cache
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.AssemblyInfo.cs
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.csproj.CoreCompileInputs.cache
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.MvcApplicationPartsAssemblyInfo.cache
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.RazorAssemblyInfo.cache
-C:\Users\bhara\Desktop\Sing Conn\SmartVideoCallApp\artifacts\obj\Debug\net8.0\SmartVideoCallApp.RazorAssemblyInfo.cs
