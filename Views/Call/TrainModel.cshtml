@@ -63,9 +63,7 @@
 
                     <button id="predictBtn" class="btn predict" onclick="togglePredictMode()" disabled>Start
                         Predict</button>
-                    <button id="speakBtn" class="btn speak" onclick="speakRecognizedText()" disabled>Speak</button>
-                    <button id="clearSentenceBtn" class="btn clear" onclick="clearRecognizedText()"
-                            disabled>Clear</button>
+                    <button id="speakBtn" class="btn speak" onclick="toggleSpeechMode()" disabled>Speech Off</button>
                 </div>
                 <div id="recognizedWord" class="recognized-word">Waiting for prediction...</div>
                 <div class="sentence-box">
@@ -94,7 +92,9 @@
         let displayedSnapshotKey = "";
         let predictTimer = null;
         let isPredicting = false;
+        let isSpeechModeOn = false;
         let lastAcceptedPrediction = "";
+        let lastAcceptedPredictionAt = 0;
         let pendingPredictionLabel = "";
         let pendingPredictionSince = 0;
         let predictionChangedSinceLastAccept = true;
@@ -104,6 +104,7 @@
         const DETECTION_POLL_MS = 400;
         const PREDICT_POLL_MS = 700;
         const PREDICTION_STABLE_MS = 1500;
+        const SAME_PREDICTION_COOLDOWN_MS = 5000;
 
         const videoEl = document.getElementById("trainVideo");
         const canvasEl = document.getElementById("trainCanvas");
@@ -126,7 +127,6 @@
         const predictCameraBtnEl = document.getElementById("predictCameraBtn");
         const predictBtnEl = document.getElementById("predictBtn");
         const speakBtnEl = document.getElementById("speakBtn");
-        const clearSentenceBtnEl = document.getElementById("clearSentenceBtn");
         const recognizedWordEl = document.getElementById("recognizedWord");
         const recognizedSentenceEl = document.getElementById("recognizedSentence");
         const predictStatusEl = document.getElementById("predictStatus");
@@ -397,8 +397,8 @@
         predictBtnEl.textContent = "Stop Predict";
         predictStatusEl.textContent = "Listening";
         recognizedWordEl.textContent = "Show a known sign to start prediction...";
-        speakBtnEl.disabled = recognizedSentenceEl.value.trim().length === 0;
-        clearSentenceBtnEl.disabled = recognizedSentenceEl.value.trim().length === 0;
+        speakBtnEl.disabled = false;
+        updateSpeechModeButton();
 
         predictTimer = setInterval(async () => {
         if (!isPredicting || videoEl.readyState < 2) return;
@@ -410,6 +410,7 @@
         predictStatusEl.textContent = "No hand";
         setPredictConfidence(null);
         recognizedWordEl.textContent = "No hand detected";
+        clearRecognizedOutput();
         pendingPredictionLabel = "";
         pendingPredictionSince = 0;
         predictionChangedSinceLastAccept = true;
@@ -462,6 +463,8 @@
         setPredictConfidence(confidence);
         recognizedWordEl.textContent = `${currentLabel} (${confidence}%)`;
 
+        const now = Date.now();
+
         const isSameStablePrediction =
         lastAcceptedPrediction === currentLabel &&
         !predictionChangedSinceLastAccept;
@@ -473,8 +476,21 @@
         return;
         }
 
+        const isSamePredictionInCooldown =
+        lastAcceptedPrediction === currentLabel &&
+        now - lastAcceptedPredictionAt < SAME_PREDICTION_COOLDOWN_MS;
+
+        if (isSamePredictionInCooldown) {
+        predictStatusEl.textContent = "Cooldown";
+        setPredictConfidence(confidence);
+        recognizedWordEl.textContent = `${currentLabel} (${confidence}%) - wait...`;
+        predictionChangedSinceLastAccept = false;
+        return;
+        }
+
         appendRecognizedWord(currentLabel);
         lastAcceptedPrediction = currentLabel;
+        lastAcceptedPredictionAt = now;
         predictionChangedSinceLastAccept = false;
         }, PREDICT_POLL_MS);
         } catch (err) {
@@ -495,30 +511,23 @@
         pendingPredictionLabel = "";
         pendingPredictionSince = 0;
         lastAcceptedPrediction = "";
+        lastAcceptedPredictionAt = 0;
         predictionChangedSinceLastAccept = true;
         predictBtnEl.textContent = "Start Predict";
         predictStatusEl.textContent = "Idle";
         setPredictConfidence(null);
+        isSpeechModeOn = false;
+        speakBtnEl.disabled = true;
+        updateSpeechModeButton();
+        clearRecognizedOutput(false);
         }
 
         function appendRecognizedWord(word) {
         const existing = recognizedSentenceEl.value.trim();
         recognizedSentenceEl.value = existing ? `${existing} ${word}` : word;
-        speakBtnEl.disabled = false;
-        clearSentenceBtnEl.disabled = false;
+        if (isSpeechModeOn) {
         speakRecognizedText(word);
         }
-
-        function clearRecognizedText() {
-        recognizedSentenceEl.value = "";
-        recognizedWordEl.textContent = "Waiting for prediction...";
-        speakBtnEl.disabled = true;
-        clearSentenceBtnEl.disabled = true;
-        lastAcceptedPrediction = "";
-        pendingPredictionLabel = "";
-        pendingPredictionSince = 0;
-        predictionChangedSinceLastAccept = true;
-        setPredictConfidence(null);
         }
 
         function setPredictConfidence(confidence) {
@@ -539,6 +548,21 @@
         }
         }
 
+        function toggleSpeechMode() {
+        if (speakBtnEl.disabled) return;
+
+        isSpeechModeOn = !isSpeechModeOn;
+        updateSpeechModeButton();
+
+        if (!isSpeechModeOn && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        }
+        }
+
+        function updateSpeechModeButton() {
+        speakBtnEl.textContent = isSpeechModeOn ? "Speech On" : "Speech Off";
+        }
+
         function speakRecognizedText(textToSpeak = null) {
         const text = (textToSpeak || recognizedSentenceEl.value || "").trim();
         if (!text) return;
@@ -551,6 +575,23 @@
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "en-IN";
         window.speechSynthesis.speak(utterance);
+        }
+
+        function clearRecognizedOutput(resetStatus = true) {
+        recognizedSentenceEl.value = "";
+
+        if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        }
+
+        if (resetStatus) {
+        recognizedWordEl.textContent = "Waiting for prediction...";
+        lastAcceptedPrediction = "";
+        lastAcceptedPredictionAt = 0;
+        pendingPredictionLabel = "";
+        pendingPredictionSince = 0;
+        predictionChangedSinceLastAccept = true;
+        }
         }
 
         async function runDetectionCycle(handModel, isSingle = false) {
@@ -823,14 +864,14 @@
         return {
         label: item.label || "",
         description: item.description || "",
-        normalized: normalizeCoordinates(parsed)
+        normalizedHands: normalizeCoordinates(parsed)
         };
-        }).filter(x => x.normalized.length > 0);
+        }).filter(x => x.normalizedHands.length > 0);
         }
 
         function normalizeCoordinates(coords) {
         if (!Array.isArray(coords) || coords.length === 0) return [];
-        return coords.slice(0, MAX_HANDS_TO_TRACK).flatMap(hand => {
+        return coords.slice(0, MAX_HANDS_TO_TRACK).map(hand => {
         if (!hand || !Array.isArray(hand.points) || hand.points.length === 0) return [];
 
         const points = hand.points;
@@ -848,12 +889,15 @@
         });
 
         const scale = maxDistance > 0 ? maxDistance : 1;
-        return shifted.map(p => ({
+        return {
+        handKey: getCanonicalHandKey(hand.handLabel),
+        points: shifted.map(p => ({
         x: p.dx / scale,
         y: p.dy / scale,
         z: p.dz / scale
-        }));
-        });
+        }))
+        };
+        }).filter(hand => hand.points.length > 0);
         }
 
         function calculateDistance(pointsA, pointsB) {
@@ -872,13 +916,64 @@
         return sum / pointsA.length;
         }
 
+        function getCanonicalHandKey(handLabel) {
+        const normalized = String(handLabel || "").trim().toLowerCase();
+        if (normalized === "left hand") return "left";
+        if (normalized === "right hand") return "right";
+        if (normalized === "single hand") return "single";
+        return "";
+        }
+
+        function calculateHandSetDistance(handsA, handsB) {
+        if (!Array.isArray(handsA) || !Array.isArray(handsB) || handsA.length !== handsB.length || handsA.length === 0) {
+        return Number.POSITIVE_INFINITY;
+        }
+
+        const directDistance = handsA.reduce((sum, hand, index) => {
+        return sum + calculateDistance(hand.points, handsB[index].points);
+        }, 0) / handsA.length;
+
+        if (handsA.length !== 2) {
+        return directDistance;
+        }
+
+        const hasStrictHandIdentity =
+        handsA.every(hand => hand.handKey === "left" || hand.handKey === "right") &&
+        handsB.every(hand => hand.handKey === "left" || hand.handKey === "right");
+
+        if (hasStrictHandIdentity) {
+        const leftA = handsA.find(hand => hand.handKey === "left");
+        const rightA = handsA.find(hand => hand.handKey === "right");
+        const leftB = handsB.find(hand => hand.handKey === "left");
+        const rightB = handsB.find(hand => hand.handKey === "right");
+
+        if (leftA && rightA && leftB && rightB) {
+        return (
+        calculateDistance(leftA.points, leftB.points) +
+        calculateDistance(rightA.points, rightB.points)
+        ) / 2;
+        }
+        }
+
+        const swappedDistance = (
+        calculateDistance(handsA[0].points, handsB[1].points) +
+        calculateDistance(handsA[1].points, handsB[0].points)
+        ) / 2;
+
+        return Math.min(directDistance, swappedDistance);
+        }
+
         function findBestMatch(currentCoords) {
-        const currentNormalized = normalizeCoordinates(currentCoords);
-        if (currentNormalized.length === 0 || savedSamples.length === 0) return null;
+        const currentNormalizedHands = normalizeCoordinates(currentCoords);
+        if (currentNormalizedHands.length === 0 || savedSamples.length === 0) return null;
 
         let best = null;
         for (const sample of savedSamples) {
-        const distance = calculateDistance(currentNormalized, sample.normalized);
+        if (sample.normalizedHands.length !== currentNormalizedHands.length) {
+        continue;
+        }
+
+        const distance = calculateHandSetDistance(currentNormalizedHands, sample.normalizedHands);
         if (!best || distance < best.distance) {
         best = { sample, distance };
         }
@@ -1253,6 +1348,7 @@
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
+        margin-bottom: 16px;
         }
 
         .btn.predict {
@@ -1261,10 +1357,6 @@
 
         .btn.speak {
         background: #0284c7;
-        }
-
-        .btn.clear {
-        background: #475569;
         }
 
         @@media (max-width: 760px) {
