@@ -84,6 +84,7 @@
 
     <script>
         let detector = null;
+        let detectorPromise = null;
         let localStream = null;
         let lastDetectedCoords = null;
         let savedSamples = [];
@@ -158,10 +159,14 @@
         try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         videoEl.srcObject = localStream;
+        await videoEl.play();
+        await waitForVideoReady();
         detectOnceBtn.disabled = false;
         predictBtnEl.disabled = false;
         trainCameraBtnEl.textContent = "Close Camera";
         predictCameraBtnEl.textContent = "Close Camera";
+        const handModel = await ensureModel();
+        startDetectionWatcher(handModel);
         if (mode === "predict") {
         switchMode("predict");
         }
@@ -189,25 +194,76 @@
         console.log("[TRAIN] Camera closed");
         }
 
+        async function waitForVideoReady() {
+        if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        return;
+        }
+
+        await new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("Video stream did not become ready in time."));
+        }, 5000);
+
+        const handleReady = () => {
+        if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        cleanup();
+        resolve();
+        }
+        };
+
+        const handleError = () => {
+        cleanup();
+        reject(new Error("Video element failed to load the camera stream."));
+        };
+
+        function cleanup() {
+        window.clearTimeout(timeoutId);
+        videoEl.removeEventListener("loadedmetadata", handleReady);
+        videoEl.removeEventListener("loadeddata", handleReady);
+        videoEl.removeEventListener("canplay", handleReady);
+        videoEl.removeEventListener("error", handleError);
+        }
+
+        videoEl.addEventListener("loadedmetadata", handleReady);
+        videoEl.addEventListener("loadeddata", handleReady);
+        videoEl.addEventListener("canplay", handleReady);
+        videoEl.addEventListener("error", handleError);
+
+        handleReady();
+        });
+        }
+
         async function ensureModel() {
         if (detector) return detector;
+        if (detectorPromise) return await detectorPromise;
 
         if (!window.tf || !window.handPoseDetection) {
         throw new Error("TensorFlow.js hand detection libraries failed to load.");
         }
 
+        detectorPromise = (async () => {
         await tf.ready();
 
         const model = handPoseDetection.SupportedModels.MediaPipeHands;
-        detector = await handPoseDetection.createDetector(model, {
+        const loadedDetector = await handPoseDetection.createDetector(model, {
         runtime: "mediapipe",
         solutionPath: "https://cdn.jsdelivr.net/npm/@@mediapipe/hands/",
         modelType: "full",
         maxHands: MAX_HANDS_TO_TRACK
         });
 
+        detector = loadedDetector;
         console.log("[TRAIN] Multi-hand detector loaded");
         return detector;
+        })();
+
+        try {
+        return await detectorPromise;
+        } catch (err) {
+        detectorPromise = null;
+        throw err;
+        }
         }
 
         function drawLandmarks(predictions) {

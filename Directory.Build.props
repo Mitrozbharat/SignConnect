@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>artifacts/build/</BaseOutputPath>
+    <BaseIntermediateOutputPath>artifacts/obj/</BaseIntermediateOutputPath>
+    <RestoreOutputPath>$(BaseIntermediateOutputPath)</RestoreOutputPath>
+    <RestorePackagesPath>$(MSBuildProjectDirectory)\\.packages</RestorePackagesPath>
+    <RestoreSources>$(RestorePackagesPath)</RestoreSources>
+    <RestoreFallbackFolders></RestoreFallbackFolders>
+    <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
+  </PropertyGroup>
+</Project>
