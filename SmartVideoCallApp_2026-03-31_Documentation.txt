@@ -1,249 +1,415 @@
 SmartVideoCallApp Documentation
-Date: 2026-03-31
+Updated Date: 2026-04-01
 
-1. Project Goal
-This system is a browser-based sign-assisted video meeting and training platform built with ASP.NET Core MVC, SignalR, EF Core, MySQL, TensorFlow.js, and MediaPipe-style hand detection.
+1. Project Overview
+SmartVideoCallApp is a browser-based video meeting and sign-assistance system built with ASP.NET Core MVC, SignalR, EF Core, MySQL, JavaScript, TensorFlow.js, and MediaPipe Hands.
 
-The platform supports:
-- live video meetings
-- sign detection overlays in meetings
-- sign-sample training and storage
-- live prediction from trained samples
-- sentence-building from detected signs
-- optional voice output from detected text
-- management of saved sign-coordinate data
+This project helps users in three main ways:
+- it supports live video calling and meeting rooms
+- it lets users capture and save hand-sign samples
+- it predicts saved signs from a live camera and can speak recognized text
 
-2. Main Modules
-- Home
-  Landing page and entry navigation.
-- Meeting Page
-  Real-time meeting UI at /Call/Index or /Call?room=...
-- Train Model Page
-  Sample capture, prediction testing, and label management.
-- Sign Coordinates Page
-  Table view for saved sign data.
-- SignalR Hub
-  Real-time room communication, chat, media state, joining, signaling.
-- Database Layer
-  Users, rooms, messages, activities, sign coordinates.
+The system is not a full deep-learning sign-language translation engine. It is a practical custom sign-recognition platform based on hand landmark detection plus sample-matching algorithms.
 
-3. Technology Stack
-- Backend: ASP.NET Core MVC (.NET 8)
-- Realtime: SignalR
-- Database: EF Core + MySQL
-- Frontend: Razor + JavaScript
-- Hand Detection: TensorFlow.js + MediaPipe hand-pose detection
-- Voice Output: Browser speechSynthesis
+2. What Was Used Before And What Is Used Now
+Previous idea:
+- simple capture of hand coordinates
+- simple one-hand matching
+- more basic prediction flow
+- weaker handling for repeated speech and no-hand reset
 
-4. Current Working Features
-- create and join meeting rooms
-- video/audio calls using WebRTC signaling
-- room approval / join flow
-- text chat
-- hand overlay drawing in meeting
-- both-hand detection in training page
-- both-hand overlay in meeting for active sign-detect user
-- train sign samples with label + description
-- save sign coordinates in database
-- view saved sign data in table
-- predict saved signs from live camera
-- sentence building in meeting sign mode
-- optional speak mode for detected sentence
+Current implementation in this project:
+- one-hand and two-hand sign capture
+- saved sign samples in database
+- live prediction using normalized landmark matching
+- left/right hand-aware comparison for two-hand signs
+- fallback swapped-hand comparison when hand order changes
+- stable prediction timing before acceptance
+- repeated speech cooldown
+- speech mode on/off toggle
+- auto-clear of recognized text when no hand is detected
 
-5. Data Flow
-5.1 Training Flow
-1. User opens TrainModel
-2. User starts camera
-3. System detects one or two hands
-4. Landmarks are converted into coordinate arrays
-5. User enters label and description
-6. System saves data into SignCoordinates table
-7. Saved samples become available for prediction
+This means the project has grown from a simple coordinate-capture prototype into a more complete training, prediction, and meeting-support system.
 
-5.2 Prediction Flow
-1. User opens TrainModel
-2. User switches to Predict
-3. System loads saved sign samples
-4. Live hand landmarks are normalized
-5. Current landmarks are compared with saved samples
-6. Stable match becomes predicted label
-7. Predicted text can be spoken
+3. Main Modules
+- Home module
+  Entry navigation and landing pages.
+- Meeting module
+  Real-time room join, video call, chat, and local sign-assist features.
+- Train Model module
+  Camera capture, coordinate preview, sign saving, and sign prediction testing.
+- Sign Coordinates module
+  Saved sample viewing and coordinate management.
+- Backend controller module
+  Handles save/load requests for sign data.
+- SignalR hub module
+  Handles meeting communication and live room events.
+- Database module
+  Stores users, rooms, chat, activities, and sign samples.
 
-5.3 Meeting Sign Flow
-1. User joins a live room
-2. User clicks the sign detection button on the local tile
-3. System activates sign detection only for that active tile
-4. Local browser detects hand landmarks
-5. Local browser compares against saved samples
-6. Stable sign changes are added to a sentence buffer
-7. After a short no-change gap, sentence is sent to chat
-8. If Speak Mode is on, sentence is spoken locally
+4. Technology Stack
+- ASP.NET Core MVC (.NET 8)
+- Razor views
+- JavaScript
+- SignalR
+- EF Core
+- MySQL
+- TensorFlow.js
+- MediaPipe Hands via `@tensorflow-models/hand-pose-detection`
+- Browser `speechSynthesis`
+- WebRTC signaling for meeting communication
 
-6. High-Level Architecture
-Browser Camera
+5. Core Algorithms Used In This Project
+This project mainly uses 7 practical algorithms/workflows:
+
+1. Hand landmark detection algorithm
+2. Coordinate mapping algorithm
+3. Coordinate normalization algorithm
+4. Distance-based sample matching algorithm
+5. Two-hand alignment and swapped-hand comparison algorithm
+6. Stable prediction timing algorithm
+7. Speech cooldown and speech-mode control algorithm
+
+These are not all separate academic models. Some are built-in libraries, and some are custom project algorithms written by the developer to make the app work correctly.
+
+6. Algorithm 1: Hand Landmark Detection
+What it is:
+- The browser uses TensorFlow.js with the MediaPipe Hands detector to estimate hand landmarks from the live camera.
+
+Where it is used:
+- `Views/Call/TrainModel.cshtml`
+- `Views/Call/Index.cshtml`
+
+Why it was used:
+- It works in the browser
+- It does not require a separate ML server
+- It can detect hand keypoints fast enough for live use
+- It supports multi-hand detection, which is important for two-hand signs
+
+How it works:
+- Camera frames are read in the browser
+- The detector estimates hand landmarks
+- Each detected hand returns keypoints such as wrist and finger tip positions
+- Those keypoints are then converted into project-specific coordinate objects
+
+How it helps this project:
+- It provides the raw hand data needed for saving signs
+- It enables live prediction from a webcam
+- It supports meeting-time local sign detection
+
+7. Algorithm 2: Coordinate Mapping
+What it is:
+- A custom project algorithm converts raw detector output into a clean array of coordinates.
+
+Where it is used:
+- `mapPredictionsToCoords()` in `Views/Call/TrainModel.cshtml`
+
+Why it was used:
+- Raw detector objects are too complex to store directly
+- The app needs a consistent format for saving and comparing signs
+
+How it works:
+- The detector returns hand keypoints
+- The project maps them into a structured format with:
+  x, y, z, metricX, metricY, metricZ, point name, hand index, and hand label
+- For two hands, the logic keeps only the required tracked hands
+
+How it helps this project:
+- Makes saved data cleaner
+- Makes prediction comparison easier
+- Supports hand labels like `Left Hand`, `Right Hand`, or fallback labels
+
+8. Algorithm 3: Coordinate Normalization
+What it is:
+- A custom normalization algorithm transforms raw coordinates into scale-independent relative coordinates.
+
+Where it is used:
+- `normalizeCoordinates()` in `Views/Call/TrainModel.cshtml`
+
+Why it was used:
+- Raw camera coordinates change with distance from camera, screen position, and hand size
+- Two users can perform the same sign at different places in the frame
+- Matching should focus on shape, not absolute pixel location
+
+How it works:
+- The first point, usually wrist/origin, is used as the origin
+- Every point is shifted relative to that origin
+- The maximum point distance is used as a scale value
+- All points are divided by that scale
+
+Result:
+- signs can be compared based on relative hand shape
+- camera placement affects prediction less
+
+How it helps this project:
+- improves matching quality
+- makes saved samples reusable across different sessions
+- reduces errors caused by hand position changes
+
+9. Algorithm 4: Distance-Based Sample Matching
+What it is:
+- A custom nearest-sample comparison algorithm.
+
+Where it is used:
+- `calculateDistance()`
+- `findBestMatch()`
+- `calculateHandSetDistance()`
+  in `Views/Call/TrainModel.cshtml`
+
+Why it was used:
+- The project currently stores sign examples instead of training a large classifier
+- Distance comparison is simpler, faster, and easier to implement for custom project data
+
+How it works:
+- Live normalized points are compared with saved normalized points
+- The average point-by-point 3D distance is calculated
+- The sample with the smallest distance becomes the best candidate
+- A maximum threshold is used so weak matches are rejected
+
+How it helps this project:
+- allows custom sign recognition without external training
+- supports rapid development and testing
+- makes saved labels immediately usable after capture
+
+10. Algorithm 5: Two-Hand Alignment And Swapped-Hand Comparison
+What it is:
+- A custom algorithm created to improve two-hand sign prediction.
+
+Why this algorithm was needed:
+- A two-hand sign may be detected in different hand order across frames
+- If saved order and live order do not match, prediction can fail
+- One-hand signs may work well, but two-hand signs can fail without hand-order handling
+
+How the developer solved it:
+- each hand is normalized separately
+- the system checks hand count before comparing
+- if `Left Hand` and `Right Hand` labels are available, it compares left-to-left and right-to-right
+- if handedness is uncertain, it compares both possible orders:
+  direct order and swapped order
+- the smaller distance is used
+
+Where it is used:
+- `calculateHandSetDistance()` in `Views/Call/TrainModel.cshtml`
+
+Why it was used:
+- to fix practical prediction problems for two-hand signs
+- to make the saved two-hand data actually usable in live prediction
+
+How it helps this project:
+- improves two-hand sign accuracy
+- reduces mismatches caused by hand-order flipping
+- supports more realistic sign capture
+
+11. Algorithm 6: Stable Prediction Timing
+What it is:
+- A timing-based filtering algorithm that waits before accepting a prediction.
+
+Where it is used:
+- predict loop logic in `Views/Call/TrainModel.cshtml`
+
+Why it was used:
+- hand detection can flicker frame-to-frame
+- immediate acceptance causes noisy output
+- live UI needs stable labels, not random jumps
+
+How it works:
+- when a sign is first matched, it becomes pending
+- the same label must remain matched for a minimum time
+- only then is it accepted as a recognized sign
+
+Important values:
+- `PREDICTION_STABLE_MS = 1500`
+- `PREDICT_POLL_MS = 700`
+
+How it helps this project:
+- reduces false positives
+- creates more reliable recognized text
+- improves user confidence in the prediction result
+
+12. Algorithm 7: Speech Cooldown And Speech Mode Control
+What it is:
+- A custom speech-control workflow for repeated recognized words.
+
+Where it is used:
+- speech and predict logic in `Views/Call/TrainModel.cshtml`
+
+Current behavior:
+- speech has an ON/OFF mode
+- when speech mode is ON, recognized signs can be spoken automatically
+- repeated speaking of the same recognized label is delayed by cooldown
+- when speech mode is OFF, prediction continues but speech does not play
+
+Important value:
+- `SAME_PREDICTION_COOLDOWN_MS = 5000`
+
+Why it was used:
+- without cooldown, the same sign may speak again and again
+- users need control over whether speech is enabled
+
+How it helps this project:
+- improves usability
+- reduces audio spam
+- gives users manual control over speaking behavior
+
+13. Additional UI/Behavior Logic Used
+The project also includes supporting logic that is not a full algorithm but is important:
+
+- No-hand reset logic
+  When no hand is detected, recognized text is cleared and speaking is stopped.
+
+- Save-state logic
+  Sign save is enabled only when a label and coordinates are available.
+
+- Pagination and search
+  The saved coordinate table supports client-side filtering and paging.
+
+14. How The Algorithms Work Together
+Full training and prediction pipeline:
+
+Camera
   ->
-Hand Detector (TFJS + MediaPipe)
+Hand landmark detector
   ->
-Landmark Coordinates
+Coordinate mapping
   ->
-Normalization
+Coordinate normalization
   ->
-Sample Matching / Prediction
+Distance matching
   ->
-Label or Sentence
+Two-hand alignment check
   ->
-Chat / Voice / UI
-
-7. Backend Flow
-User Action
+Stable timing check
   ->
-Controller / SignalR Hub
+Recognized label
   ->
-EF Core DbContext
-  ->
-MySQL Database
-  ->
-Response to Browser
+Optional speech output
 
-8. Meeting Flow
-User A Camera
-  ->
-Local Sign Detection
-  ->
-Stable Sign Match
-  ->
-Sentence Buffer
-  ->
-SignalR Chat Message
-  ->
-All Room Members See Text
+This pipeline is the main intelligence of the current system.
 
-9. Database Entities
-- UserAccount
-  Stores participant identity
-- Organization
-  Optional org-based room usage
-- MeetingRoom
-  Stores room metadata
-- ChatMessage
-  Stores room chat history
-- ActivityLog
-  Stores join/leave/action events
-- SignCoordinate
-  Stores training samples for signs
+15. How The Developer Created The Current Matching Logic
+The current sign-recognition logic is a hybrid of:
+- library-based hand landmark extraction
+- custom project logic written on top of those landmarks
 
-10. SignCoordinate Data Meaning
-Each saved row contains:
-- Id
-- Label
-- Description
-- TimeId
-- CoordinatesJson
-- CreatedAtUtc
+What came from libraries:
+- hand landmark detection
+- multi-hand keypoint estimation
+- browser speech engine
 
-CoordinatesJson contains:
-- one or two hands
-- per-hand point list
-- x, y, z values
-- hand ordering / labels depending on page logic
+What the developer created in this project:
+- coordinate mapping format
+- save/load flow for sign samples
+- normalization logic
+- sample-comparison logic
+- two-hand order handling
+- stable prediction timing
+- repeated-speech cooldown
+- speech-mode toggle behavior
 
-11. Current Matching Logic
-The current system uses:
-- saved hand landmark samples
-- normalization relative to the wrist/origin
-- distance comparison against stored samples
-- stable timing checks before accepting prediction
+This means the project does not rely only on a third-party model. The core recognition workflow has been shaped by project-specific engineering choices.
 
-This is sample matching, not a trained deep-learning sign-language model.
+16. Why These Algorithms Were Chosen Instead Of A Full Deep-Learning Sign Model
+Reasons:
+- easier to build with limited custom data
+- faster to integrate into a browser app
+- no need for GPU training pipeline
+- immediate save-and-test workflow
+- practical for a custom vocabulary system
 
-12. Current Strengths
-- works directly in browser
-- no external ML server required
-- fast iteration for custom sign data
-- supports both-hand capture
-- already integrated with meeting/chat flow
-- easy to expand with more labels
+This choice is especially useful when:
+- the project needs custom signs
+- the dataset is small
+- a quick prototype or teaching tool is needed
 
-13. Current Limitations
-- not a full sign-language understanding engine
-- sample matching is weaker than a trained model
-- complex motion-based signs are harder
-- sentence understanding is rule-based, not language-aware
-- face/body context is not yet used
-- meeting page currently relies on local prediction only
+17. How To Use The Algorithms In This Project
+Training use:
+1. Open Train Model
+2. Start camera
+3. Show one or two hands
+4. Let landmarks be detected
+5. Enter label and description
+6. Save coordinates
+7. The sample is stored in the `SignCoordinate` table
 
-14. Why Full Video-to-Sentence Is Hard
-Real sign language often depends on:
-- hand shape
-- hand movement over time
-- both-hand coordination
-- facial expression
-- head pose
-- body posture
-- signer variation
+Prediction use:
+1. Open Train Model
+2. Switch to Predict
+3. Start camera
+4. Start prediction
+5. The system loads saved samples
+6. Live landmarks are normalized and compared
+7. The best stable match becomes recognized text
+8. If speech mode is ON, it can speak
 
-So video to sentence needs sequence modeling, not just single-frame matching.
+Meeting use:
+1. Join room
+2. Start local sign features
+3. Local browser performs landmark detection
+4. The local system creates labels or sentence-like outputs
+5. Final text can be shown or sent through the meeting flow
 
-15. Recommended Next-Stage System
-Phase 1
-- improve sample collection
-- add more labels
-- collect more two-hand examples
-- improve sentence buffering rules
+18. Current Data Model For Saved Signs
+Main saved entity:
+- `SignCoordinate`
 
-Phase 2
-- train a real classifier on saved samples/videos
-- move from sample matching to ML prediction
-- support temporal sign sequences
+Stored fields:
+- `Id`
+- `Label`
+- `Description`
+- `TimeId`
+- `CoordinatesJson`
+- `CreatedAtUtc`
 
-Phase 3
-- add face + pose landmarks
-- support sentence-level sign recognition
-- improve child training workflows
-- support instructor video dataset ingestion
+Meaning of `CoordinatesJson`:
+- array of one or two hands
+- each hand contains:
+  hand index, hand label, points
+- each point contains:
+  x, y, z and optional metric values
 
-16. Instructor-to-Child Training System Design
-Instructor Videos
-  ->
-Frame / Landmark Extraction
-  ->
-Labeling by Word or Sentence
-  ->
-Dataset Storage
-  ->
-Model Training
-  ->
-Live Child Camera Prediction
-  ->
-Text / Voice Feedback
+Why this matters:
+- saved data becomes the project dataset
+- prediction depends on the quality of this saved data
 
-17. If Using Instructor Videos
-Needed steps:
-- split videos into sign clips
-- label each clip correctly
-- extract landmarks from frames
-- store sequence data, not only one frame
-- train classifier on many variations
-- validate with children’s samples
+19. Strengths Of The Current System
+- works in browser
+- no separate ML server required
+- fast custom sign prototyping
+- supports one-hand and two-hand signs
+- supports local voice output
+- integrates with live meeting flows
+- easy to extend by adding more samples
 
-18. Multi-User Meeting Handling
-Best practice:
-- each user detects signs locally
-- only final label/sentence is sent to room
-- raw coordinates should not be broadcast continuously
-- speech should stay local unless explicitly shared
+20. Current Limitations
+- not a full natural sign-language understanding model
+- mainly frame-based, not true motion-sequence modeling
+- accuracy depends heavily on saved sample quality
+- complex dynamic signs are harder than static shapes
+- face and body context are not yet included
+- this is closer to sample-based sign recognition than full translation
 
-19. Security and Performance Notes
-- local inference reduces server load
-- SignalR should carry text events, not constant landmark streams
-- both-hand live inference is heavier than one-hand
-- long meetings need careful timer cleanup
-- database should store samples efficiently and with labels
+21. How This Project Helps Users
+This project helps by:
+- giving a way to train custom signs quickly
+- supporting sign-assisted communication in meetings
+- helping users convert recognized signs into readable text
+- optionally speaking recognized output
+- creating a base system that can grow into a larger sign-learning platform
 
-20. Final Conclusion
-This system already works as:
-- a custom sign training tool
-- a sign-assisted meeting tool
-- a live prediction prototype
+22. Recommended Future Improvements
+- save multiple samples per label
+- use threshold tuning per sign
+- add motion/sequence support
+- add pose and face landmarks
+- train a classifier on larger datasets
+- add admin/instructor dataset tools
+- improve meeting-side sign sentence generation
 
-It does not yet behave like a full sign-language translation engine, but it is a strong foundation for building one.
+23. Final Conclusion
+SmartVideoCallApp currently uses a practical, engineering-focused sign-recognition approach:
+- MediaPipe/TensorFlow.js for hand landmark detection
+- custom normalization and distance matching for recognition
+- custom two-hand alignment logic for better accuracy
+- stability and cooldown logic for better user experience
+
+So the project already contains real algorithmic work, even though it is not yet a full deep-learning translation engine. It is a solid and useful foundation for sign training, prediction, and assistive communication.
